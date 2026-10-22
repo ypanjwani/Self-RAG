@@ -1,0 +1,41 @@
+window.SR = window.SR || {};
+// Same text as sample_doc.txt, embedded so the page works when opened directly from disk.
+window.SR.SAMPLE_DOC = `Building the tower
+The Eiffel Tower was built between 1887 and 1889 as the entrance arch for the 1889 World's Fair in Paris. Construction took about two years, two months and five days.
+
+The designers
+The tower is named after Gustave Eiffel, whose engineering company designed and built it. The original sketch was drawn by two of his engineers, Maurice Koechlin and Émile Nouguier.
+
+How tall is it
+The Eiffel Tower is about 330 metres tall, including the antennas at its top. For 41 years it was the tallest man-made structure in the world, until the Chrysler Building passed it in 1930.
+
+Iron and rivets
+The tower is made of wrought iron and weighs about 10,100 tonnes. Its 18,038 iron parts are held together by around 2.5 million rivets.
+
+Early critics
+Not everyone loved it at first. In 1887, a group of famous artists published a letter calling the planned tower "useless and monstrous".
+
+Visitors
+Around 6 to 7 million people visit the Eiffel Tower every year. Visitors can climb the stairs or take lifts to three different levels.
+
+A fresh coat of paint
+The tower is repainted by hand about every seven years to protect the iron from rust. Each new coat needs around 60 tonnes of paint in a shade called "Eiffel Tower Brown".
+
+Saved by radio
+The tower was meant to stand for only 20 years. It was saved from being taken down in 1909 because it was useful as a giant radio antenna.
+
+A growing tower
+On hot summer days the iron expands, so the top of the tower can grow up to 15 centimetres taller. Its height changes slightly with the seasons.
+
+Night lights
+Since 1985 the tower has been lit at night by golden lamps. Every hour after sunset, 20,000 light bulbs make it sparkle for five minutes.
+
+Paris cafés
+Paris is famous for its cafés, where people sit outside for hours drinking coffee and watching the street. Many cafés have been open for more than a century.
+
+The River Seine
+The River Seine flows through the middle of Paris for about 13 kilometres. Boat tours on the river pass many landmarks, from Notre-Dame to the Louvre.
+
+French cheese
+France makes more than 1,000 kinds of cheese. Many regions are proud of their own local varieties.
+`;

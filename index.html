@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Self-RAG, Explained</title>
+  <meta name="description" content="A hands-on, visual guide to Self-RAG: how a language model learns to retrieve on demand and critique its own writing.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=7">
+</head>
+<body>
+
+<header class="topnav">
+  <div class="topnav-in">
+    <a class="brand" href="#top"><span class="brand-mark">S</span>Self-RAG <em>explained</em></a>
+    <nav class="navlinks" aria-label="Sections">
+      <a href="#why">Why</a>
+      <a href="#tokens">Tokens</a>
+      <a href="#document">Document</a>
+      <a href="#models">3 Models</a>
+      <a href="#simulator">Simulator</a>
+      <a href="#training">Training</a>
+    </nav>
+  </div>
+  <div class="readbar"><i id="readBar"></i></div>
+</header>
+
+<main>
+
+  <!-- ============ HERO ============ -->
+  <section id="top" class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">An interactive guide</p>
+        <h1>The LLM that knows <span class="u-ret">when to look things up</span>, and <span class="u-crit">checks its own work</span>.</h1>
+        <p class="lead">Self-RAG (Self-Reflective Retrieval-Augmented Generation) teaches a language model a few special words. With them, it decides when to search, judges what it finds, and grades its own answer.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#why">Start learning</a>
+          <a class="btn btn-ghost" href="#simulator">Jump to the simulator</a>
+        </div>
+      </div>
+      <div class="hero-visual card" aria-label="Example of Self-RAG output with reflection tokens">
+        <div class="hv-head"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="hv-title">What the model writes</span></div>
+        <div class="hv-q"><span class="hv-label">You ask</span>Who designed the Eiffel Tower?</div>
+        <div class="hv-out" id="heroStream"></div>
+        <p class="hv-note">The coloured <b>[tokens]</b> are the model talking to itself.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ WHY ============ -->
+  <section id="why" class="sec">
+    <div class="wrap">
+      <div class="prose">
+        <p class="eyebrow">01 · The problem</p>
+        <h2>Ordinary RAG runs on autopilot.</h2>
+        <p class="lead">Retrieval-Augmented Generation (RAG) gives an LLM an open book: search a document, paste what you find into the prompt, then answer. A good idea, but the standard pipeline follows the same fixed steps every time and <b>never stops to think</b>.</p>
+      </div>
+
+      <div class="rag-flow card" id="ragFlow">
+        <p class="rag-cap">How a conventional RAG pipeline handles <b>every</b> request</p>
+        <div class="rf-row">
+          <div class="rf-node rf-q"><span class="rf-k">Question</span>“How tall is the Eiffel Tower?”</div>
+          <div class="rf-arrow">→</div>
+          <div class="rf-node rf-ret" data-p="1"><span class="rf-mark">1</span><span class="rf-k">Retriever</span>Searches the document. <i>Always.</i></div>
+          <div class="rf-arrow">→</div>
+          <div class="rf-node rf-chunks" data-p="2"><span class="rf-mark">2</span><span class="rf-k">Top K = 3 chunks</span>
+            <span class="rf-chunk good">d3 · How tall is it</span>
+            <span class="rf-chunk weak">d9 · A growing tower</span>
+            <span class="rf-chunk bad">d11 · Paris cafés</span>
+          </div>
+          <div class="rf-arrow">→</div>
+          <div class="rf-node rf-gate" data-p="3"><span class="rf-mark">3</span><span class="rf-k">Quality check</span><span class="rf-none">none</span></div>
+          <div class="rf-arrow">→</div>
+          <div class="rf-node rf-llm" data-p="4"><span class="rf-mark">4</span><span class="rf-k">LLM prompt</span>All 3 chunks pasted in, as-is</div>
+          <div class="rf-arrow">→</div>
+          <div class="rf-node rf-ans"><span class="rf-k">Answer</span>Never checked against the chunks</div>
+        </div>
+      </div>
+
+      <div class="rag-probs" id="ragProbs">
+        <article class="rp" data-p="1">
+          <span class="rp-n">1</span>
+          <h3>It never asks <i>“do I need to look this up?”</i></h3>
+          <p>A search runs for every request, whether it's a fact question or <i>“write me a poem”</i>. Knowing <b>when</b> to retrieve simply isn't part of the design.</p>
+        </article>
+        <article class="rp" data-p="2">
+          <span class="rp-n">2</span>
+          <h3>It always grabs the same number of chunks</h3>
+          <p>K is a fixed setting, not a judgment. One perfect match or ten, you get exactly K. The same amount every time, whatever the question needs.</p>
+        </article>
+        <article class="rp" data-p="3">
+          <span class="rp-n">3</span>
+          <h3>Nobody checks what came back</h3>
+          <p>The retriever ranks by surface similarity. Nothing asks how <b>relevant</b> or <b>useful</b> a chunk really is, so a weak match looks just as trustworthy as a perfect one.</p>
+        </article>
+        <article class="rp" data-p="4">
+          <span class="rp-n">4</span>
+          <h3>Off-topic chunks go in anyway</h3>
+          <p>Even if every chunk misses the point, all of them are pasted into the prompt. The model tries to use them and gets <b>distracted or misled</b>.</p>
+        </article>
+      </div>
+      <p class="rag-bridge">Self-RAG keeps the open book but adds the missing thinking: <b>when to look</b>, <b>whether what it found is any good</b>, and <b>whether its answer matches the source</b>. Below, the same request goes to three systems.</p>
+
+      <div class="tabs" role="tablist" id="whyTabs">
+        <button role="tab" class="tab on" data-q="fact">A factual question</button>
+        <button role="tab" class="tab" data-q="creative">A creative request</button>
+      </div>
+      <div class="why-q" id="whyQ"></div>
+      <div class="why-grid" id="whyGrid"></div>
+
+      <div class="takeaway">
+        <span class="takeaway-k">Takeaway</span>
+        <p>Self-RAG adds two skills to the model: <b>deciding when to retrieve</b> and <b>critiquing its own output</b>. It does both by writing special <em>reflection tokens</em>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TOKENS ============ -->
+  <section id="tokens" class="sec sec-soft">
+    <div class="wrap">
+      <div class="prose">
+        <p class="eyebrow">02 · The vocabulary</p>
+        <h2>Four reflection tokens.</h2>
+        <p class="lead">These are extra "words" added to the model's vocabulary. They are not for the reader. The model writes them to steer itself. <b>Click a card to flip it.</b></p>
+      </div>
+      <div class="token-grid" id="tokenGrid"></div>
+
+      <div class="anatomy card">
+        <h3>One segment, exactly as the model writes it</h3>
+        <p class="muted">Read left to right. Hover any token to see what it means.</p>
+        <div class="anatomy-row" id="anatomy"></div>
+        <div class="anatomy-legend">
+          <span><i class="lg lg-ret"></i>Decide to retrieve</span>
+          <span><i class="lg lg-doc"></i>Retrieved passage</span>
+          <span><i class="lg lg-rel"></i>Judge the passage</span>
+          <span><i class="lg lg-gen"></i>Normal text</span>
+          <span><i class="lg lg-sup"></i>Judge the text</span>
+          <span><i class="lg lg-use"></i>Rate usefulness</span>
+        </div>
+      </div>
+
+      <div class="whyt">
+        <div class="prose">
+          <h3 class="whyt-h">Why do we need these tokens?</h3>
+          <p>Each token fixes one specific way ordinary RAG goes wrong. Here is the problem without it, and what changes with it.</p>
+        </div>
+        <div class="whyt-list" id="whyTokens"></div>
+        <div class="takeaway">
+          <span class="takeaway-k">Together</span>
+          <p>Because the tokens come with probabilities, Self-RAG can <b>score every candidate segment</b> and keep the best one. Changing the weights lets you <b>steer</b> the model, for example making it stricter about evidence, <b>without retraining</b>. You can try this with the sliders in the simulator.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DOCUMENT ============ -->
+  <section id="document" class="sec">
+    <div class="wrap">
+      <div class="prose">
+        <p class="eyebrow">03 · Our playground data</p>
+        <h2>The sample document.</h2>
+        <p class="lead">Everything on this page searches this one short text about the Eiffel Tower. It is split into passages <code>d1</code>, <code>d2</code>, … one per paragraph.</p>
+        <p>Some passages are on-topic, some are only loosely related, and a few are off-topic on purpose, so you can watch the model ignore them. You can also paste your own text.</p>
+      </div>
+      <div class="doc-actions">
+        <button class="btn btn-ghost" id="docEditBtn">Edit document</button>
+        <button class="btn btn-ghost" id="docResetBtn">Reset to sample</button>
+        <a class="btn btn-ghost" href="sample_doc.txt" download>Download .txt</a>
+        <span class="muted small" id="docCount"></span>
+      </div>
+      <div class="doc-editor" id="docEditor" hidden>
+        <p class="small muted">One passage per paragraph. Separate paragraphs with a blank line. A short first line is used as the title.</p>
+        <textarea id="docText" rows="14" spellcheck="false"></textarea>
+        <div class="doc-actions"><button class="btn btn-primary" id="docApplyBtn">Apply changes</button><button class="btn btn-ghost" id="docCancelBtn">Cancel</button></div>
+      </div>
+      <div class="doc-grid" id="docGrid"></div>
+    </div>
+  </section>
+
+  <!-- ============ MODELS ============ -->
+  <section id="models" class="sec sec-soft">
+    <div class="wrap">
+      <div class="prose">
+        <p class="eyebrow">04 · The cast</p>
+        <h2>Three models, one team.</h2>
+        <p class="lead">Self-RAG uses three models. Meet each one, then try it yourself.</p>
+      </div>
+
+      <div class="model-cards">
+        <article class="mcard m-ret">
+          <div class="mcard-ico">R</div>
+          <h3>Retriever</h3>
+          <p>Finds the <b>K</b> passages most related to the question.</p>
+          <p class="small"><b>How:</b> scores every passage against the query, then keeps the top K. The paper scores by <b>meaning</b> (Contriever embeddings). This page scores by <b>keywords</b> (BM25). Details are in “Try the Retriever” below.</p>
+        </article>
+        <article class="mcard m-crit">
+          <div class="mcard-ico">C</div>
+          <h3>Critic</h3>
+          <p>A judge that predicts <b>one reflection token</b> for a given input.</p>
+          <p class="small muted">Paper: Llama 2-7B trained on GPT-4 labels. Used during training.</p>
+        </article>
+        <article class="mcard m-gen">
+          <div class="mcard-ico">G</div>
+          <h3>Generator</h3>
+          <p>The LLM that writes the answer <b>and</b> the reflection tokens, all by itself.</p>
+          <p class="small muted">Paper: Llama 2-7B / 13B. This is the model you chat with.</p>
+        </article>
+      </div>
+
+      <p class="note">On this page, all three run as small simulations in your browser. They follow the same steps and token rules as the paper, just with simple keyword logic instead of neural networks.</p>
+
+      <div class="tabs pg-tabs" role="tablist" id="pgTabs">
+        <button role="tab" class="tab on" data-pane="pgRet"><span class="tdot d-ret"></span>Try the Retriever</button>
+        <button role="tab" class="tab" data-pane="pgCrit"><span class="tdot d-crit"></span>Try the Critic</button>
+        <button role="tab" class="tab" data-pane="pgGen"><span class="tdot d-gen"></span>Try the Generator</button>
+      </div>
+
+      <!-- Retriever playground -->
+      <div class="pane card" id="pgRet">
+        <div class="pane-intro">
+          <h3>Retriever: find the top-K passages</h3>
+          <p>Type a question. Every passage gets a relevance score, and the top <b>K</b> are handed to the generator.</p>
+        </div>
+        <div class="algo">
+          <h3 class="algo-h">How does the retriever pick the K passages?</h3>
+          <p class="algo-sub">It gives <b>every passage a score</b> for how well it matches the query, sorts them, and keeps the <b>top K</b>. The two methods below differ only in <i>how</i> that score is computed.</p>
+          <div class="algo-grid">
+
+          <div class="algo-pane" id="algoPaper">
+            <h4 class="algo-tag tag-paper">In the paper · Dense retrieval (Contriever)</h4>
+            <p>Self-RAG uses an off-the-shelf retriever called <b>Contriever</b> (fine-tuned on the MS MARCO search dataset). It compares <b>meanings</b>, not exact words.</p>
+            <ol class="algo-steps">
+              <li><span class="as-n">1</span><div><b>Encode the passages, once.</b> Before anyone asks anything, every passage is turned into a vector, a list of 768 numbers that captures its meaning. These vectors are stored in an index.</div></li>
+              <li><span class="as-n">2</span><div><b>Encode the query.</b> The same encoder turns the query into a vector. In Self-RAG the query is the <b>question plus the text written so far</b>, so each segment can pull in different passages.</div></li>
+              <li><span class="as-n">3</span><div><b>Score by similarity.</b> Each passage's score is the dot product of its vector with the query vector. Similar meanings point the same way, so they get a high score.</div></li>
+              <li><span class="as-n">4</span><div><b>Keep the top K.</b> Sort by score and take the K best. A vector index (such as FAISS) does this fast, even over millions of passages.</div></li>
+            </ol>
+            <div class="formula">score(q, d) = E(q) · E(d) &nbsp;&nbsp;→&nbsp;&nbsp; top-K = the K passages with the highest score</div>
+            <p class="small muted">Because it works on meaning, “How high is it?” can match a passage that says “330 metres tall” even with no shared words.</p>
+          </div>
+
+          <div class="algo-pane" id="algoPage">
+            <h4 class="algo-tag tag-page">On this page · BM25 keyword scoring</h4>
+            <p>A neural encoder is too heavy to run in this page, so the playground uses <b>BM25</b>, the classic keyword-ranking formula behind many search engines. The pipeline is the same: score every passage, then keep the top K.</p>
+            <ol class="algo-steps">
+              <li><span class="as-n">1</span><div><b>Split into words.</b> Lower-case, remove filler words (<i>the, is, of…</i>), and reduce words to a base form (<i>built → build</i>, <i>taller → tall</i>).</div></li>
+              <li><span class="as-n">2</span><div><b>Rare words count more (IDF).</b> “Eiffel” appears in many passages, so it says little. “Rivets” appears in one, so it's a strong signal.</div></li>
+              <li><span class="as-n">3</span><div><b>Repeats help, up to a point (k₁ = 1.5).</b> A word appearing twice scores more than once, but the gain levels off.</div></li>
+              <li><span class="as-n">4</span><div><b>Long passages are slightly penalised (b = 0.75),</b> so they don't win just by containing more words. Then: sum over the query words, sort, keep the top K.</div></li>
+            </ol>
+            <div class="formula">score(q, d) = Σ<sub>t ∈ q</sub> IDF(t) · <span class="frac"><span>tf · (k₁ + 1)</span><span>tf + k₁ · (1 − b + b · |d| / avgdl)</span></span></div>
+            <p class="small muted">To get a bit closer to meaning-based search, a few synonyms are added at half weight (e.g. <i>tall → height</i>), and “when / how tall” questions get a small bonus for passages containing dates or numbers.</p>
+          </div>
+        </div>
+          </div>
+        <h4 class="h4 try-h">Try it yourself</h4>
+        <div class="field-row">
+          <label class="field grow"><span>Your question</span><input id="retQ" type="text" value="Who designed the Eiffel Tower?"></label>
+          <label class="field k-field"><span>K = <b id="retKv">3</b></span><input id="retK" type="range" min="1" max="5" value="3"></label>
+        </div>
+        <div class="examples" id="retEx"></div>
+        <div class="ret-grid">
+          <div>
+            <h4 class="h4">Score for every passage</h4>
+            <div class="ret-list" id="retList"></div>
+          </div>
+          <div>
+            <h4 class="h4">Top-<span id="retKv2">3</span> passages sent to the generator</h4>
+            <div class="ret-top" id="retTop"></div>
+          </div>
+        </div>
+        <p class="small muted ret-hint">Tip: click any passage in the score list to see how its score was calculated.</p>
+        <div class="ret-explain" id="retExplain"></div>
+
+      </div>
+
+      <!-- Critic playground -->
+      <div class="pane card" id="pgCrit" hidden>
+        <div class="pane-intro">
+          <h3>Critic: predict one reflection token</h3>
+          <p>Pick which token to predict, type your text, and the critic picks a value with a confidence.</p>
+        </div>
+        <div class="seg-ctl" id="critType">
+          <button class="on" data-t="Retrieve">Retrieve</button>
+          <button data-t="ISREL">ISREL</button>
+          <button data-t="ISSUP">ISSUP</button>
+          <button data-t="ISUSE">ISUSE</button>
+        </div>
+        <p class="crit-ask" id="critAsk"></p>
+        <div class="crit-grid">
+          <div class="crit-inputs">
+            <label class="field" id="critQWrap"><span id="critQLabel">Question or instruction</span><input id="critQ" type="text"></label>
+            <label class="field" id="critPWrap"><span>Passage</span>
+              <select id="critPSel"></select>
+              <textarea id="critP" rows="3"></textarea>
+            </label>
+            <label class="field" id="critSWrap"><span id="critSLabel">Sentence the model wrote</span><textarea id="critS" rows="2"></textarea></label>
+            <div class="examples" id="critEx"></div>
+          </div>
+          <div class="crit-out" id="critOut"></div>
+        </div>
+      </div>
+
+      <!-- Generator playground -->
+      <div class="pane card" id="pgGen" hidden>
+        <div class="pane-intro">
+          <h3>Generator: watch it write, retrieve on demand, and critique</h3>
+          <p>This is the raw text the generator produces, reflection tokens included. Here K = 1 to keep it simple. The full simulator below runs K passages in parallel.</p>
+        </div>
+        <div class="field-row">
+          <label class="field grow"><span>Your prompt</span><input id="genQ" type="text" value="How tall is the Eiffel Tower, and what is it made of?"></label>
+          <button class="btn btn-primary self-end" id="genGo">Generate</button>
+        </div>
+        <div class="examples" id="genEx"></div>
+        <h4 class="h4">Raw generator output</h4>
+        <div class="gen-raw" id="genRaw"></div>
+        <h4 class="h4">What the user sees (tokens removed)</h4>
+        <div class="gen-clean" id="genClean"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SIMULATOR ============ -->
+  <section id="simulator" class="sec">
+    <div class="wrap">
+      <div class="prose">
+        <p class="eyebrow">05 · Put it all together</p>
+        <h2>Watch Self-RAG think.</h2>
+        <p class="lead">Self-RAG writes its answer <b>one segment at a time</b>, in a loop. For each segment it may retrieve <b>K</b> passages, write K candidates <b>in parallel</b>, critique them, keep the best one, and start again.</p>
+      </div>
+      <div class="callout">
+        <span class="callout-ico">↻</span>
+        <div>
+          <b>Retrieve is not a one-time switch.</b> The model asks “do I need to look something up?” <b>before every segment</b>, based on the question <i>and what it has written so far</i>. So it can write a first line from memory with <span class="chip t-ret q-none"><span class="ck">Retrieve</span><span class="ce">=</span><span class="cv">No</span></span> and only start retrieving in the middle of the answer, when it reaches a fact.
+          <button class="ex callout-btn" id="midAnswerBtn">See it happen: intro → fact ▸</button>
+        </div>
+      </div>
+
+      <div class="sim card" id="sim">
+        <!-- inputs -->
+        <div class="sim-inputs">
+          <label class="field grow"><span>Your question</span><input id="simQ" type="text"></label>
+          <button class="btn btn-primary self-end" id="simRun">Run</button>
+        </div>
+        <div class="examples" id="simPresets"></div>
+
+        <div class="sim-settings">
+          <div class="set-item">
+            <span class="set-label">Passages per segment (K)</span>
+            <div class="seg-ctl small" id="simK">
+              <button data-k="1">1</button><button data-k="2">2</button><button data-k="3" class="on">3</button><button data-k="4">4</button><button data-k="5">5</button>
+            </div>
+          </div>
+          <details class="adv">
+            <summary>Advanced settings</summary>
+            <div class="adv-grid">
+              <label class="field"><span>Retrieval threshold δ = <b id="vTh">0.50</b></span><input type="range" id="sTh" min="0.05" max="0.95" step="0.05" value="0.5"><small>Retrieve only when p(Retrieve=Yes) ≥ δ. Slide it up to make the model rely on memory.</small></label>
+              <label class="field"><span>ISREL weight = <b id="vRel">1.0</b></span><input type="range" id="sRel" min="0" max="2" step="0.1" value="1"><small>How much passage relevance counts.</small></label>
+              <label class="field"><span>ISSUP weight = <b id="vSup">1.0</b></span><input type="range" id="sSup" min="0" max="2" step="0.1" value="1"><small>Higher = prefer well-supported, factual segments.</small></label>
+              <label class="field"><span>ISUSE weight = <b id="vUse">0.5</b></span><input type="range" id="sUse" min="0" max="2" step="0.1" value="0.5"><small>How much overall usefulness counts.</small></label>
+            </div>
+            <p class="small muted">The defaults (1.0, 1.0, 0.5) are the ones used in the paper. Changing a weight re-ranks the lanes instantly.</p>
+          </details>
+        </div>
+
+        <!-- controls -->
+        <div class="controls">
+          <div class="ctl-btns">
+            <button class="ctl" id="cReset" title="Reset (R)" aria-label="Reset"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
+            <button class="ctl" id="cBack" title="Step back (←)" aria-label="Step back"><svg viewBox="0 0 24 24"><path d="M18 5v14l-9-7zM6 5h2v14H6z"/></svg></button>
+            <button class="ctl ctl-play" id="cPlay" title="Play / Pause (Space)" aria-label="Play"><svg viewBox="0 0 24 24" id="playIco"><path d="M8 5v14l11-7z"/></svg><span id="playTxt">Play</span></button>
+            <button class="ctl" id="cStep" title="Step forward (→)" aria-label="Step forward"><svg viewBox="0 0 24 24"><path d="M6 5v14l9-7zM16 5h2v14h-2z"/></svg></button>
+          </div>
+          <div class="speed seg-ctl small" id="cSpeed" aria-label="Speed">
+            <button data-s="0.5">0.5×</button><button data-s="1" class="on">1×</button><button data-s="2">2×</button><button data-s="4">4×</button>
+          </div>
+          <span class="beatcount" id="beatCount"></span>
+        </div>
+        <div class="scrub" id="scrub" title="Click to jump to any step"></div>
+
+        <!-- loop tracker -->
+        <div class="tracker">
+          <div class="tracker-seg" id="trSeg">Ready</div>
+          <ol class="tracker-steps" id="trSteps"></ol>
+        </div>
+
+        <div class="dtl" id="simDtl"></div>
+
+        <div class="narr" id="simNarr" aria-live="polite"></div>
+
+        <!-- stage -->
+        <div class="decide" id="simDecide"></div>
+        <div class="lanes" id="simLanes"></div>
+
+        <!-- answer -->
+        <div class="answer" id="simAnswerBox">
+          <div class="answer-head">
+            <h4>Answer so far</h4>
+            <label class="switch"><input type="checkbox" id="showTok" checked><span class="sw"></span>Show reflection tokens</label>
+          </div>
+          <div class="answer-body" id="simAnswer"></div>
+        </div>
+        <p class="small muted sim-foot">Keyboard: <kbd>Space</kbd> play/pause · <kbd>→</kbd> step · <kbd>←</kbd> back · <kbd>R</kbd> reset. In the real model, the generator writes the critique tokens itself. It learned how from the critic during training.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TRAINING ============ -->
+  <section id="training" class="sec sec-soft">
+    <div class="wrap">
+      <div class="prose">
+        <p class="eyebrow">06 · Behind the scenes</p>
+        <h2>How it learns to do this.</h2>
+        <p class="lead">Training happens in two stages: first a <b>critic</b> learns to judge, then the critic teaches the <b>generator</b>. Press play to walk through it.</p>
+      </div>
+      <div class="train-ctl"><button class="btn btn-primary" id="trainPlay">▶ Play the pipeline</button></div>
+      <div class="train-grid" id="trainGrid">
+        <article class="tstep" data-n="1">
+          <div class="tstep-n">1</div>
+          <h3>A teacher labels examples</h3>
+          <p>GPT-4 is asked to judge thousands of examples and write the right reflection token for each one.</p>
+          <div class="tstep-demo"><span class="mini-q">"Is this passage relevant?"</span><span class="arrow">→</span><span class="chip t-rel q-good"><span class="ck">ISREL</span><span class="ce">=</span><span class="cv">Relevant</span></span></div>
+        </article>
+        <article class="tstep" data-n="2">
+          <div class="tstep-n">2</div>
+          <h3>Train the critic</h3>
+          <p>A smaller model (Llama 2-7B) learns to copy GPT-4's judgments. It becomes a cheap, fast judge.</p>
+          <div class="tstep-demo"><span class="mini-model m-gpt">GPT-4</span><span class="arrow">teaches</span><span class="mini-model m-crit">Critic</span></div>
+        </article>
+        <article class="tstep" data-n="3">
+          <div class="tstep-n">3</div>
+          <h3>Label the training data</h3>
+          <p>Offline, the retriever and critic go through about 150k question–answer pairs. They insert passages and reflection tokens where needed.</p>
+          <div class="tstep-demo code-ish" id="augDemo"></div>
+        </article>
+        <article class="tstep" data-n="4">
+          <div class="tstep-n">4</div>
+          <h3>Train the generator</h3>
+          <p>The generator learns ordinary next-word prediction on this marked-up text. Reflection tokens are just words it learns to write.</p>
+          <div class="tstep-demo"><span class="mini-model m-gen">Generator</span><span class="arrow">learns to write</span><span class="chip t-sup q-good"><span class="ck">ISSUP</span><span class="ce">=</span><span class="cv">Fully</span></span></div>
+        </article>
+      </div>
+
+      <!-- ---- Zoom-in: training the critic ---- -->
+      <div class="ct" id="criticTraining">
+        <div class="prose">
+          <p class="eyebrow">Zoom in on step 2</p>
+          <h3 class="ct-h">Training the critic: what goes in, what comes out</h3>
+          <p>The critic is <b>one</b> model (Llama 2-7B) that learns all four token types. Each token type is a different question, so each gets <b>different inputs</b>. GPT-4 supplies the correct answer (the <b>target</b>), and the critic is trained to output that same token.</p>
+        </div>
+
+        <ol class="ct-flow">
+          <li><span class="ct-fn">1</span><b>Sample</b> a question <i class="v-x">x</i> and answer <i class="v-y">y</i> from the training data (plus passages <i class="v-d">d</i> from the retriever).</li>
+          <li><span class="ct-fn">2</span><b>Ask GPT-4</b> with a token-specific instruction and a few worked examples. It replies with a label, e.g. <code>[Fully supported]</code>.</li>
+          <li><span class="ct-fn">3</span><b>Store</b> the pair (input → target token) in the critic dataset. All four types are mixed together.</li>
+          <li><span class="ct-fn">4</span><b>Fine-tune</b> Llama 2-7B to predict the target token from the input.</li>
+        </ol>
+        <div class="formula ct-formula">max<sub>C</sub>&nbsp; 𝔼<sub>((x, y), r) ∼ D<sub>critic</sub></sub> &nbsp;log p<sub>C</sub>( r | x, y ) &nbsp;&nbsp;<span class="muted">← ordinary next-token loss, computed only on the target token r</span></div>
+
+        <h4 class="h4">What each token sees. Click a row to explore it.</h4>
+        <div class="ct-scroll">
+          <table class="ct-matrix" id="ctMatrix">
+            <thead>
+              <tr>
+                <th>Token</th>
+                <th><i class="v-x">x</i> Question</th>
+                <th><i class="v-p">y<sub>&lt;t</sub></i> Text so far</th>
+                <th><i class="v-d">d</i> Passage</th>
+                <th><i class="v-y">y</i> Answer / segment</th>
+                <th>Target (one of)</th>
+                <th class="num">GPT-4 labels</th>
+                <th>Agrees w/ GPT-4</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="ct-mix">
+          <div class="ct-mix-bar" id="ctMix"></div>
+          <p class="small muted">The critic dataset: ~47k GPT-4 labels, all four types shuffled into one training set. Agreement is measured on held-out GPT-4 labels (paper, Appendix). ISUSE is hardest because 4 vs 5 is a judgment call, even for humans.</p>
+        </div>
+
+        <div class="ct-lab card">
+          <div class="ct-lab-head">
+            <div class="seg-ctl" id="ctType">
+              <button class="on" data-t="Retrieve">Retrieve</button>
+              <button data-t="ISREL">ISREL</button>
+              <button data-t="ISSUP">ISSUP</button>
+              <button data-t="ISUSE">ISUSE</button>
+            </div>
+            <p class="ct-sig" id="ctSig"></p>
+          </div>
+
+          <div class="ct-lab-grid">
+            <div>
+              <h4 class="h4 ct-h4">① The training input, as the critic reads it</h4>
+              <div class="ct-seq" id="ctSeq"></div>
+              <div class="ct-legend">
+                <span><i class="sw-tpl"></i>Fixed instruction</span>
+                <span><i class="sw-x"></i>Question x</span>
+                <span><i class="sw-p"></i>Text so far</span>
+                <span><i class="sw-d"></i>Passage d</span>
+                <span><i class="sw-y"></i>Answer y</span>
+                <span><i class="sw-r"></i>Target (loss here)</span>
+              </div>
+            </div>
+            <div>
+              <h4 class="h4 ct-h4">② What training changes</h4>
+              <div class="ct-train">
+                <p class="small muted ct-cap">The critic's probability for each possible token on this input.</p>
+                <div class="ct-phase">Before training <span>base Llama 2 has never seen these labels</span></div>
+                <div id="ctBefore"></div>
+                <div class="ct-arrow">↓ fine-tune on ~47k GPT-4 labels</div>
+                <div class="ct-phase">After training <span>the critic picks GPT-4's label</span></div>
+                <div id="ctProbs"></div>
+                <p class="small muted ct-why" id="ctWhy"></p>
+              </div>
+            </div>
+          </div>
+
+          <h4 class="h4 ct-h4">③ Example training rows (from the sample document)</h4>
+          <div class="ct-scroll">
+            <table class="ct-table" id="ctTable"></table>
+          </div>
+          <p class="small muted">Click a row to load it above. Try a <b>Partially</b> or <b>No support</b> row to see the target change. Rows are written for this page in the paper's format; the paper's real data comes from ~150k instruction–answer pairs. The probabilities are illustrative, not outputs of the real model.</p>
+        </div>
+      </div>
+
+      <div class="takeaway">
+        <span class="takeaway-k">Takeaway</span>
+        <p>When you use Self-RAG, there is <b>no GPT-4 and no separate critic</b>. The generator writes the reflection tokens on its own. This makes it fast, and you can steer it by changing the token weights (like the sliders in the simulator).</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p><b>Based on:</b> Asai, Wu, Wang, Sil &amp; Hajishirzi. <em>Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection.</em> 2023. <a href="https://arxiv.org/abs/2310.11511" target="_blank" rel="noopener">arXiv:2310.11511</a></p>
+    <p class="muted small">The models on this page are simplified simulations built for learning. They are not the trained neural networks from the paper.</p>
+  </div>
+</footer>
+
+<script src="js/doc.js?v=6"></script>
+<script src="js/text.js?v=6"></script>
+<script src="js/retriever.js?v=6"></script>
+<script src="js/critic.js?v=6"></script>
+<script src="js/generator.js?v=6"></script>
+<script src="js/ui.js?v=6"></script>
+<script src="js/engine.js?v=6"></script>
+<script src="js/playgrounds.js?v=6"></script>
+<script src="js/simulator.js?v=6"></script>
+<script src="js/critictrain.js?v=7"></script>
+<script src="js/app.js?v=6"></script>
+</body>
+</html>
